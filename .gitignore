@@ -1,3 +1,13 @@
+<<<<<<< HEAD
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+=======
 # Logs
 logs
 *.log
@@ -22,3 +32,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+>>>>>>> 706fba7b9c9e579309c7df76b0ef63c37f898cc9

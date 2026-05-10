@@ -1,3 +1,46 @@
+<<<<<<< HEAD
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Natural Tones Palette */
+  --color-bio-bg: #F7F8F5;
+  --color-bio-card: #FFFFFF;
+  --color-bio-card-alt: #E9EDE4;
+  --color-bio-card-dark: #1A2E1A;
+  --color-bio-border: #E0E4DC;
+  --color-bio-text: #2D332A;
+  --color-bio-muted: #7A8C6F;
+  --color-bio-accent: #4A6741;
+  --color-bio-alert: #F87171;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bio-bg);
+    color: var(--color-bio-text);
+    font-family: var(--font-sans);
+  }
+}
+
+@layer utilities {
+  .bento-card {
+    border-radius: 32px;
+    border-width: 1px;
+    border-color: var(--color-bio-border);
+    padding: 1.5rem;
+    transition-property: all;
+    transition-duration: 300ms;
+  }
+  
+  .mono-data {
+    font-family: var(--font-mono);
+    letter-spacing: -0.02em;
+  }
+}
+=======
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -109,3 +152,4 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+>>>>>>> 706fba7b9c9e579309c7df76b0ef63c37f898cc9

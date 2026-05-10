@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global helpers (Note: No longer requiring auth for local IP use case)
+    function isSignedIn() {
+      return true; // Bypassing auth requirement for local IP setup
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Helpers
+    function isValidSensorReading(data) {
+      return data.value is number &&
+             data.unit is string && data.unit.size() <= 10 &&
+             data.type in ['temperature', 'ph', 'water_level', 'oxygen', 'humidity'] &&
+             data.system in ['fish', 'lobster', 'hydroponics'] &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidControlAction(data) {
+      return data.status is bool &&
+             data.name is string && data.name.size() <= 50 &&
+             data.system in ['fish', 'lobster', 'hydroponics'] &&
+             (data.mode == null || data.mode in ['auto', 'manual']);
+    }
+
+    // System access (Publicly accessible for local network use)
+    match /systems/{systemId} {
+      allow read: if true;
+      allow write: if false; 
+
+      match /sensors/{sensorId} {
+        allow read: if true;
+        allow write: if isValidSensorReading(incoming());
+      }
+
+      match /history/{historyId} {
+        allow read: if true;
+        allow create: if isValidSensorReading(incoming());
+      }
+
+      match /controls/{controlId} {
+        allow read: if true;
+        allow update: if isValidControlAction(incoming()) && 
+                      incoming().diff(existing()).affectedKeys().hasAny(['status', 'mode', 'lastAction']);
+        allow create: if isValidControlAction(incoming());
+      }
+    }
+
+    match /alerts/{alertId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidAlert(incoming());
+    }
+    
+    // User profile
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+  }
+}

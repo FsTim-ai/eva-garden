@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "SensorReading": {
+      "title": "Sensor Reading",
+      "description": "A single data point from a sensor.",
+      "type": "object",
+      "properties": {
+        "value": { "type": "number" },
+        "unit": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["temperature", "ph", "water_level", "oxygen", "humidity"] },
+        "system": { "type": "string", "enum": ["fish", "lobster", "hydroponics"] }
+      },
+      "required": ["value", "unit", "timestamp", "type", "system"]
+    },
+    "ControlAction": {
+      "title": "Control Action",
+      "description": "Current state of an automation device.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "boolean" },
+        "lastAction": { "type": "string", "format": "date-time" },
+        "mode": { "type": "string", "enum": ["auto", "manual"] },
+        "name": { "type": "string" },
+        "system": { "type": "string", "enum": ["fish", "lobster", "hydroponics"] }
+      },
+      "required": ["status", "name", "system"]
+    },
+    "Alert": {
+      "title": "Alert",
+      "description": "System alerts or notifications.",
+      "type": "object",
+      "properties": {
+        "level": { "type": "string", "enum": ["info", "warning", "critical"] },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "system": { "type": "string" }
+      },
+      "required": ["level", "message", "timestamp"]
+    }
+  },
+  "firestore": {
+    "systems": {
+      "schema": "object",
+      "description": "Root systems collection."
+    },
+    "systems/{systemId}/sensors": {
+      "schema": "SensorReading",
+      "description": "Latest sensor readings for each specific sensor."
+    },
+    "systems/{systemId}/history": {
+      "schema": "SensorReading",
+      "description": "Historical log of sensor data."
+    },
+    "systems/{systemId}/controls": {
+      "schema": "ControlAction",
+      "description": "Automation control states (pumps, feeders, etc)."
+    },
+    "alerts": {
+      "schema": "Alert",
+      "description": "Global or system-specific alerts."
+    }
+  }
+}
