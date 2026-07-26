@@ -46,17 +46,15 @@ export function createExcelLogger({ db, systemId, filePath, validSystems }) {
   }
 
   async function latestReadingsBySystem() {
-    const snap = await db
-      .collection(`systems/${systemId}/sensors`)
-      .orderBy('timestamp', 'desc')
-      .limit(100)
-      .get();
+    // `sensors` holds one upserted doc per system+type, so this is already
+    // the latest reading for each — no ordering or dedup needed.
+    const snap = await db.collection(`systems/${systemId}/sensors`).get();
 
     const latest = {}; // { [system]: { [type]: value } }
     for (const doc of snap.docs) {
       const { system, type, value } = doc.data();
       latest[system] ??= {};
-      if (!(type in latest[system])) latest[system][type] = value;
+      latest[system][type] = value;
     }
     return latest;
   }

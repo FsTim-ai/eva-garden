@@ -1,26 +1,52 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, where, doc, updateDoc, setDoc, Timestamp, addDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { SensorReading, ControlAction, SystemType, OperationType } from '../types';
 import { handleFirestoreError } from '../lib/error-handler';
 import { SensorCard } from './SensorCard';
 import { ControlToggle } from './ControlToggle';
-import { Thermometer, Droplets, Waves, Wind, Fish, Loader2, LogIn, Power, Zap, Github, LayoutDashboard, Settings, Bell, Leaf, Shell, Download } from 'lucide-react';
+import { Thermometer, Droplets, Waves, Wind, CloudFog, Fish, Power, Zap, LayoutDashboard, Leaf, Shell, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string | undefined;
+// Set VITE_BACKEND_URL to point elsewhere (e.g. local backend testing);
+// defaults to the deployed instance so the download button works out of the box.
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined)
+  ?? 'https://eva-garden-production.up.railway.app';
+
+function formatReadingTime(timestamp: Timestamp | undefined): string {
+  if (!timestamp) return '—';
+  return timestamp.toDate().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' });
+}
+
+type SensorType = SensorReading['type'];
+
+const SENSOR_UNITS: Record<SensorType, string> = {
+  temperature: '°C',
+  ph: 'pH',
+  water_level: '%',
+  oxygen: 'mg/L',
+  humidity: '%',
+};
+
+// Sensor slots each system is expected to report. A slot with no reading
+// yet (no ESP32 has sent that type) just displays as 0, not seeded/dummy data.
+const SYSTEM_SENSOR_TYPES: Record<SystemType, SensorType[]> = {
+  fish: ['temperature', 'ph', 'oxygen', 'water_level'],
+  lobster: ['temperature', 'ph', 'oxygen', 'water_level'],
+  hydroponics: ['temperature', 'ph', 'humidity', 'water_level'],
+};
 
 export default function Dashboard() {
-  const [loading, setLoading] = useState(false);
   const [sensors, setSensors] = useState<SensorReading[]>([]);
   const [controls, setControls] = useState<ControlAction[]>([]);
+  const [history, setHistory] = useState<SensorReading[]>([]);
   const [systemId] = useState('rooftop-main');
   const [activeView, setActiveView] = useState<'selection' | SystemType>('selection');
   const [now, setNow] = useState(() => new Date());
+  const [showIoTGuide, setShowIoTGuide] = useState(false);
 
   useEffect(() => {
     const tick = setInterval(() => setNow(new Date()), 1000);
@@ -30,6 +56,7 @@ export default function Dashboard() {
   useEffect(() => {
     const sensorPath = `systems/${systemId}/sensors`;
     const controlPath = `systems/${systemId}/controls`;
+    const historyPath = `systems/${systemId}/history`;
 
     const unsubSensors = onSnapshot(collection(db, sensorPath), (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as SensorReading));
@@ -41,9 +68,18 @@ export default function Dashboard() {
       setControls(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, controlPath));
 
+    // Ordered by time only (not filtered by system) so this doesn't need a
+    // Firestore composite index; filtered down per-system when rendering.
+    const historyQuery = query(collection(db, historyPath), orderBy('timestamp', 'desc'), limit(50));
+    const unsubHistory = onSnapshot(historyQuery, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as SensorReading));
+      setHistory(data);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, historyPath));
+
     return () => {
       unsubSensors();
       unsubControls();
+      unsubHistory();
     };
   }, [systemId]);
 
@@ -71,49 +107,6 @@ export default function Dashboard() {
     }
   };
 
-  const seedData = async () => {
-    const sensorPath = `systems/${systemId}/sensors`;
-    const controlPath = `systems/${systemId}/controls`;
-    
-    const initialSensors = [
-      { type: 'temperature', value: 27.5, unit: '°C', system: 'fish' },
-      { type: 'ph', value: 7.2, unit: 'pH', system: 'fish' },
-      { type: 'oxygen', value: 6.8, unit: 'mg/L', system: 'fish' },
-      { type: 'water_level', value: 85, unit: '%', system: 'fish' },
-      { type: 'temperature', value: 18.2, unit: '°C', system: 'lobster' },
-      { type: 'ph', value: 8.1, unit: 'pH', system: 'lobster' },
-      { type: 'oxygen', value: 7.5, unit: 'mg/L', system: 'lobster' },
-      { type: 'water_level', value: 92, unit: '%', system: 'lobster' },
-      { type: 'ph', value: 6.2, unit: 'pH', system: 'hydroponics' },
-      { type: 'humidity', value: 65, unit: '%', system: 'hydroponics' },
-      { type: 'temperature', value: 24.1, unit: '°C', system: 'hydroponics' },
-      { type: 'water_level', value: 45, unit: '%', system: 'hydroponics' },
-    ];
-
-    const initialControls = [
-      { name: 'Oxygenator', status: true, mode: 'auto', system: 'fish' },
-      { name: 'Feeder', status: false, mode: 'auto', system: 'fish' },
-      { name: 'Water Filter', status: true, mode: 'auto', system: 'lobster' },
-      { name: 'Cooling Pump', status: true, mode: 'manual', system: 'lobster' },
-      { name: 'Mist System', status: false, mode: 'auto', system: 'hydroponics' },
-      { name: 'UV Supplement', status: true, mode: 'manual', system: 'hydroponics' },
-    ];
-
-    try {
-      for (const s of initialSensors) {
-        // Same `${system}_${type}` id the backend upserts to, so a real
-        // ESP32 reading replaces the seeded value instead of sitting next
-        // to it as a duplicate card.
-        await setDoc(doc(db, sensorPath, `${s.system}_${s.type}`), { ...s, timestamp: Timestamp.now() });
-      }
-      for (const c of initialControls) {
-        await addDoc(collection(db, controlPath), { ...c, lastAction: Timestamp.now() });
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, sensorPath);
-    }
-  };
-
   const getSystemIcon = (type: string) => {
     switch(type) {
       case 'temperature': return Thermometer;
@@ -124,16 +117,6 @@ export default function Dashboard() {
       default: return Zap;
     }
   };
-
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-bio-bg text-bio-accent">
-        <Loader2 className="animate-spin" size={48} />
-      </div>
-    );
-  }
-
-  const [showIoTGuide, setShowIoTGuide] = useState(false);
 
   const renderIoTGuide = () => (
     <motion.div
@@ -236,23 +219,20 @@ export default function Dashboard() {
           </motion.button>
         ))}
       </div>
-
-      {sensors.length === 0 && (
-        <div className="mt-10 sm:mt-16 text-center">
-          <button
-            onClick={seedData}
-            className="px-8 py-3 bg-bio-accent text-white rounded-full font-bold shadow-lg hover:shadow-bio-accent/20 transition-all"
-          >
-            INITIALIZE NODES
-          </button>
-        </div>
-      )}
     </div>
   );
 
   const renderDashboard = (type: SystemType) => {
-    const sysSensors = sensors.filter(s => s.system === type);
+    const sysSensors = SYSTEM_SENSOR_TYPES[type].map(sensorType => {
+      const reading = sensors.find(s => s.system === type && s.type === sensorType);
+      return {
+        type: sensorType,
+        value: reading?.value ?? 0,
+        unit: reading?.unit ?? SENSOR_UNITS[sensorType],
+      };
+    });
     const sysControls = controls.filter(c => c.system === type);
+    const sysHistory = history.filter(h => h.system === type);
     const config = {
       fish: { label: 'Fish Aquaculture', icon: Fish, color: 'bg-blue-500' },
       lobster: { label: 'Lobster Habitat', icon: Shell, color: 'bg-orange-500' },
@@ -278,12 +258,11 @@ export default function Dashboard() {
           <AnimatePresence>
             {sysSensors.map(s => (
               <SensorCard
-                key={s.id}
+                key={s.type}
                 label={s.type.replace('_', ' ')}
                 value={s.value}
                 unit={s.unit}
                 icon={getSystemIcon(s.type)}
-                trend={Math.random() > 0.5 ? 'up' : 'stable'}
               />
             ))}
           </AnimatePresence>
@@ -291,18 +270,51 @@ export default function Dashboard() {
 
         <div className="bg-white rounded-[28px] sm:rounded-[40px] p-5 sm:p-6 md:p-8 border border-bio-border shadow-sm">
            <h3 className="text-sm font-bold uppercase tracking-widest text-bio-muted mb-4 sm:mb-6">Automation Controls</h3>
-           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-             {sysControls.map(c => (
-                <ControlToggle
-                  key={c.id}
-                  label={c.name}
-                  isOn={c.status}
-                  mode={c.mode}
-                  onToggle={() => toggleControl(c)}
-                  onModeToggle={() => toggleMode(c)}
-                />
-             ))}
-           </div>
+           {sysControls.length === 0 ? (
+             <p className="text-sm text-bio-muted italic">Belum ada perangkat kontrol untuk sistem ini.</p>
+           ) : (
+             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+               {sysControls.map(c => (
+                  <ControlToggle
+                    key={c.id}
+                    label={c.name}
+                    isOn={c.status}
+                    mode={c.mode}
+                    onToggle={() => toggleControl(c)}
+                    onModeToggle={() => toggleMode(c)}
+                  />
+               ))}
+             </div>
+           )}
+        </div>
+
+        <div className="bg-white rounded-[28px] sm:rounded-[40px] p-5 sm:p-6 md:p-8 border border-bio-border shadow-sm">
+          <div className="flex items-center justify-between gap-4 mb-4 sm:mb-6">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-bio-muted">Riwayat Data IoT (ESP32)</h3>
+            <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-bio-accent">
+              <span className="w-1.5 h-1.5 rounded-full bg-bio-accent animate-pulse" />
+              Live
+            </span>
+          </div>
+          {sysHistory.length === 0 ? (
+            <p className="text-sm text-bio-muted italic">Belum ada data masuk dari sensor IoT untuk sistem ini.</p>
+          ) : (
+            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+              {sysHistory.map(h => (
+                <div
+                  key={h.id}
+                  className="flex items-center justify-between gap-3 px-3 sm:px-4 py-2.5 rounded-2xl bg-bio-bg text-sm"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {React.createElement(getSystemIcon(h.type), { size: 14, className: 'text-bio-accent shrink-0' })}
+                    <span className="font-bold uppercase text-xs tracking-wide truncate">{h.type.replace('_', ' ')}</span>
+                  </div>
+                  <span className="font-semibold mono-data shrink-0">{h.value} {h.unit}</span>
+                  <span className="text-bio-muted text-xs shrink-0">{formatReadingTime(h.timestamp)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -319,15 +331,13 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {BACKEND_URL && (
-              <a
-                href={`${BACKEND_URL}/api/export`}
-                className="flex items-center gap-2 bg-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl border border-bio-border shadow-sm text-[10px] sm:text-xs font-bold text-bio-accent hover:shadow-md transition-all"
-              >
-                <Download size={14} />
-                Excel Log
-              </a>
-            )}
+            <a
+              href={`${BACKEND_URL}/api/export`}
+              className="flex items-center gap-2 bg-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl border border-bio-border shadow-sm text-[10px] sm:text-xs font-bold text-bio-accent hover:shadow-md transition-all"
+            >
+              <Download size={14} />
+              Excel Log
+            </a>
             <div className="bg-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl border border-bio-border shadow-sm text-[10px] sm:text-xs font-mono">
               IP: 192.168.1.100 <span className="text-bio-muted ml-2">ROOFTOP-RT</span>
             </div>
@@ -351,5 +361,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-const CloudFog = Wind;
