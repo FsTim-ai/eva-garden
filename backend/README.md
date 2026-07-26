@@ -137,7 +137,7 @@ fish or hydroponics data.
   privileges regardless of `firestore.rules`. Keep `serviceAccountKey.json` and
   `SENSOR_API_KEY` private.
 - `SYSTEM_ID` here is the root system document (defaults to `rooftop-main`, same
-  as the frontend in `src/components/Dashboard.tsx`) — not to be confused with
+  as the frontend in `frontend/src/components/Dashboard.tsx`) — not to be confused with
   `system` in the request body, which is the specific tank/bed (`fish` /
   `lobster` / `hydroponics`).
 
