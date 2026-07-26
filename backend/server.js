@@ -74,11 +74,16 @@ app.post('/api/sensors', requireApiKey, async (req, res) => {
   const sensorsPath = `systems/${SYSTEM_ID}/sensors`;
   const historyPath = `systems/${SYSTEM_ID}/history`;
 
-  const doc = await db.collection(sensorsPath).add(reading);
+  // `sensors` holds the latest reading per system+type (upsert on a
+  // deterministic id) so the dashboard's onSnapshot listener updates the
+  // same card in place instead of a new card appearing on every POST.
+  // `history` stays append-only as the full log.
+  const sensorDocId = `${system}_${type}`;
+  await db.collection(sensorsPath).doc(sensorDocId).set(reading);
   await db.collection(historyPath).add(reading);
 
   console.log(`[sensor] ${system}/${type} = ${value}${reading.unit}`);
-  res.status(201).json({ ok: true, id: doc.id });
+  res.status(201).json({ ok: true, id: sensorDocId });
 });
 
 // Hourly snapshot of the latest reading per system/type into an Excel

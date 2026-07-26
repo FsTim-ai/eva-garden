@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, where, doc, updateDoc, Timestamp, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, doc, updateDoc, setDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { SensorReading, ControlAction, SystemType, OperationType } from '../types';
@@ -20,6 +20,12 @@ export default function Dashboard() {
   const [controls, setControls] = useState<ControlAction[]>([]);
   const [systemId] = useState('rooftop-main');
   const [activeView, setActiveView] = useState<'selection' | SystemType>('selection');
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   useEffect(() => {
     const sensorPath = `systems/${systemId}/sensors`;
@@ -95,7 +101,10 @@ export default function Dashboard() {
 
     try {
       for (const s of initialSensors) {
-        await addDoc(collection(db, sensorPath), { ...s, timestamp: Timestamp.now() });
+        // Same `${system}_${type}` id the backend upserts to, so a real
+        // ESP32 reading replaces the seeded value instead of sitting next
+        // to it as a duplicate card.
+        await setDoc(doc(db, sensorPath, `${s.system}_${s.type}`), { ...s, timestamp: Timestamp.now() });
       }
       for (const c of initialControls) {
         await addDoc(collection(db, controlPath), { ...c, lastAction: Timestamp.now() });
@@ -306,7 +315,7 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center gap-2 text-[10px] sm:text-xs text-bio-muted uppercase tracking-widest font-bold">
               <span className="w-2 h-2 rounded-full bg-bio-accent animate-pulse shrink-0" />
-              SYSTEM NODE-OS ONLINE // {new Date().toLocaleTimeString()}
+              SYSTEM NODE-OS ONLINE // {now.toLocaleTimeString()}
             </div>
           </div>
           <div className="flex items-center gap-3">
