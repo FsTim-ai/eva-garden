@@ -53,6 +53,22 @@ If `SENSOR_API_KEY` is set in `.env`, requests must include header `x-api-key: <
 Returns `{ "ok": true }` — useful for checking the ESP32 can actually reach the server
 before debugging Firestore.
 
+### `GET /api/export`
+
+Downloads an Excel workbook (`sensor-log.xlsx`) with one sheet per system
+(Fish Tank / Lobster Farm / Hydroponics). Every hour, on the hour, the server
+takes the latest known reading of each type for each system and appends one
+row with the date and time. A system with no sensor reporting a given type
+yet just gets a blank cell for it — readings arrive independently per
+system/type, so most rows won't be fully filled in.
+
+The workbook file lives at `EXCEL_LOG_PATH` (defaults to `backend/data/sensor-log.xlsx`,
+gitignored). It's written to local disk, so on hosts with an ephemeral
+filesystem (Render/Railway free tiers) the log resets on every redeploy —
+fine for this project's scale, but worth knowing. A snapshot is also taken
+once immediately at startup so the file is downloadable right away instead
+of waiting up to an hour.
+
 ## ESP32 firmware (Arduino), sending every 5 minutes
 
 ```cpp
@@ -109,6 +125,11 @@ void loop() {
 Replace `readTemperatureSensor()` / `readPhSensor()` with your actual sensor
 reads (e.g. a DS18B20 for temperature, an analog pH probe read via `analogRead`
 and converted with your probe's calibration curve).
+
+The actual sketch running on the lobster tank's ESP32 (pH probe + I2C LCD) is
+in [firmware/lobster_ph_sensor/lobster_ph_sensor.ino](firmware/lobster_ph_sensor/lobster_ph_sensor.ino) —
+it only ever sends `{"system":"lobster","type":"ph",...}`, so it can't affect
+fish or hydroponics data.
 
 ## Notes
 

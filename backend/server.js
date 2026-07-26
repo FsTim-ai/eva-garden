@@ -1,9 +1,12 @@
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
+import cron from 'node-cron';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { createExcelLogger } from './excel-log.js';
 
 const {
   PORT = 3001,
@@ -12,6 +15,7 @@ const {
   GOOGLE_APPLICATION_CREDENTIALS = './serviceAccountKey.json',
   FIREBASE_SERVICE_ACCOUNT,
   SENSOR_API_KEY,
+  EXCEL_LOG_PATH = path.join(process.cwd(), 'data', 'sensor-log.xlsx'),
 } = process.env;
 
 // Hosts like Render/Railway don't let you ship a gitignored file, so the
@@ -77,9 +81,38 @@ app.post('/api/sensors', requireApiKey, async (req, res) => {
   res.status(201).json({ ok: true, id: doc.id });
 });
 
+// Hourly snapshot of the latest reading per system/type into an Excel
+// workbook (one sheet per system), so historical values are browsable
+// outside Firestore and can be downloaded from /api/export.
+const excelLogger = createExcelLogger({
+  db,
+  systemId: SYSTEM_ID,
+  filePath: EXCEL_LOG_PATH,
+  validSystems: VALID_SYSTEMS,
+});
+
+app.get('/api/export', (req, res) => {
+  res.download(excelLogger.filePath, 'sensor-log.xlsx', (err) => {
+    if (err && !res.headersSent) {
+      console.error(err);
+      res.status(500).json({ ok: false, error: 'export failed' });
+    }
+  });
+});
+
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ ok: false, error: 'internal error' });
+});
+
+try {
+  await excelLogger.ensureSheets();
+  await excelLogger.snapshot(); // seed the file immediately so it's downloadable right away
+} catch (err) {
+  console.error('[excel] initial snapshot failed, will retry next hour', err);
+}
+cron.schedule('0 * * * *', () => {
+  excelLogger.snapshot().catch((err) => console.error('[excel] snapshot failed', err));
 });
 
 app.listen(PORT, () => {

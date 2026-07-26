@@ -6,11 +6,13 @@ import { SensorReading, ControlAction, SystemType, OperationType } from '../type
 import { handleFirestoreError } from '../lib/error-handler';
 import { SensorCard } from './SensorCard';
 import { ControlToggle } from './ControlToggle';
-import { Thermometer, Droplets, Waves, Wind, Fish, Loader2, LogIn, Power, Zap, Github, LayoutDashboard, Settings, Bell, Leaf, Shell } from 'lucide-react';
+import { Thermometer, Droplets, Waves, Wind, Fish, Loader2, LogIn, Power, Zap, Github, LayoutDashboard, Settings, Bell, Leaf, Shell, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
 import firebaseConfig from '../../firebase-applet-config.json';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string | undefined;
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
@@ -307,8 +309,19 @@ export default function Dashboard() {
               SYSTEM NODE-OS ONLINE // {new Date().toLocaleTimeString()}
             </div>
           </div>
-          <div className="bg-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl border border-bio-border shadow-sm text-[10px] sm:text-xs font-mono">
-            IP: 192.168.1.100 <span className="text-bio-muted ml-2">ROOFTOP-RT</span>
+          <div className="flex items-center gap-3">
+            {BACKEND_URL && (
+              <a
+                href={`${BACKEND_URL}/api/export`}
+                className="flex items-center gap-2 bg-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl border border-bio-border shadow-sm text-[10px] sm:text-xs font-bold text-bio-accent hover:shadow-md transition-all"
+              >
+                <Download size={14} />
+                Excel Log
+              </a>
+            )}
+            <div className="bg-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl border border-bio-border shadow-sm text-[10px] sm:text-xs font-mono">
+              IP: 192.168.1.100 <span className="text-bio-muted ml-2">ROOFTOP-RT</span>
+            </div>
           </div>
         </header>
 
